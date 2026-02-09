@@ -1,0 +1,629 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "SSI Personal Data Wallet API",
+    "description": "Self-Sovereign Identity Personal Data Wallet - Secure DID and Verifiable Credential management with cryptographic challenge-response authentication.\n\n## Authentication\nThis API uses passwordless cryptographic authentication:\n1. Register with a public key (Ed25519)\n2. Request a challenge (nonce)\n3. Sign the nonce with your private key\n4. Submit signature to receive JWT token\n\n## Encryption\nAll DID Documents and VC payloads are encrypted at rest using AES-256-GCM.\nClients must provide a passphrase via `X-Wallet-Passphrase` header for operations requiring decryption.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "SSI Wallet Team"
+    },
+    "license": {
+      "name": "MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "/api",
+      "description": "API base path"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Authentication",
+      "description": "Passwordless cryptographic authentication"
+    },
+    {
+      "name": "DID",
+      "description": "Decentralized Identifier management"
+    },
+    {
+      "name": "Verifiable Credentials",
+      "description": "VC storage and management"
+    }
+  ],
+  "paths": {
+    "/auth/register": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Register a new holder",
+        "description": "Register a new wallet holder with their Ed25519 public key",
+        "operationId": "registerHolder",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Registration successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Holder or public key already registered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/challenge": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Request authentication challenge",
+        "description": "Request a nonce challenge for passwordless authentication",
+        "operationId": "requestChallenge",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChallengeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Challenge issued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChallengeResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Holder not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Login with signed challenge",
+        "description": "Submit signed nonce to receive JWT token",
+        "operationId": "login",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid signature or expired challenge",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Logout",
+        "description": "Invalidate current session",
+        "operationId": "logout",
+        "security": [{"bearerAuth": []}],
+        "responses": {
+          "200": {
+            "description": "Logged out",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/did": {
+      "post": {
+        "tags": ["DID"],
+        "summary": "Create DID",
+        "description": "Create a new DID for the authenticated holder. The DID Document is encrypted at rest.",
+        "operationId": "createDID",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {
+            "name": "X-Wallet-Passphrase",
+            "in": "header",
+            "required": true,
+            "schema": {"type": "string"},
+            "description": "Passphrase for encryption (min 8 characters)"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDIDRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "DID created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DIDResponse"
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "409": {
+            "description": "DID already exists for this holder"
+          }
+        }
+      },
+      "get": {
+        "tags": ["DID"],
+        "summary": "Get DID",
+        "description": "Retrieve holder's DID (decrypted)",
+        "operationId": "getDID",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {
+            "name": "X-Wallet-Passphrase",
+            "in": "header",
+            "required": true,
+            "schema": {"type": "string"},
+            "description": "Passphrase for decryption"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "DID retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DIDDetailResponse"
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {
+            "description": "Invalid passphrase"
+          },
+          "404": {
+            "description": "No DID found"
+          }
+        }
+      }
+    },
+    "/vcs": {
+      "post": {
+        "tags": ["Verifiable Credentials"],
+        "summary": "Create VC",
+        "description": "Create a new Verifiable Credential. The VC payload is encrypted at rest.",
+        "operationId": "createVC",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {
+            "name": "X-Wallet-Passphrase",
+            "in": "header",
+            "required": true,
+            "schema": {"type": "string"},
+            "description": "Passphrase for encryption"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateVCRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "VC created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VCMetadata"
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"}
+        }
+      },
+      "get": {
+        "tags": ["Verifiable Credentials"],
+        "summary": "List VCs",
+        "description": "List VCs (metadata only, no decryption required)",
+        "operationId": "listVCs",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {"type": "integer", "default": 1}
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {"type": "integer", "default": 20, "maximum": 100}
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {"type": "string"},
+            "description": "Filter by VC type"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {"type": "string", "enum": ["active", "revoked", "expired"]}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "VCs listed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VCListResponse"
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"}
+        }
+      }
+    },
+    "/vcs/{id}": {
+      "get": {
+        "tags": ["Verifiable Credentials"],
+        "summary": "Get VC",
+        "description": "Get single VC (decrypted)",
+        "operationId": "getVC",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string", "format": "uuid"}
+          },
+          {
+            "name": "X-Wallet-Passphrase",
+            "in": "header",
+            "required": true,
+            "schema": {"type": "string"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "VC retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VCDetailResponse"
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"description": "Invalid passphrase"},
+          "404": {"description": "VC not found"}
+        }
+      },
+      "patch": {
+        "tags": ["Verifiable Credentials"],
+        "summary": "Update VC status",
+        "description": "Update VC status (e.g., revoke)",
+        "operationId": "updateVC",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string", "format": "uuid"}
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateVCRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "VC updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VCMetadata"
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "404": {"description": "VC not found"}
+        }
+      },
+      "delete": {
+        "tags": ["Verifiable Credentials"],
+        "summary": "Delete VC",
+        "description": "Delete a VC",
+        "operationId": "deleteVC",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string", "format": "uuid"}
+          }
+        ],
+        "responses": {
+          "204": {"description": "VC deleted"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "404": {"description": "VC not found"}
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Authentication required",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {"type": "string"},
+          "message": {"type": "string"},
+          "requestId": {"type": "string"}
+        }
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "required": ["holderId", "publicKey"],
+        "properties": {
+          "holderId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Client-generated holder ID"
+          },
+          "publicKey": {
+            "type": "string",
+            "description": "Base64-encoded Ed25519 public key (DER SPKI format)"
+          }
+        }
+      },
+      "RegisterResponse": {
+        "type": "object",
+        "properties": {
+          "message": {"type": "string"},
+          "holderId": {"type": "string"},
+          "createdAt": {"type": "string", "format": "date-time"}
+        }
+      },
+      "ChallengeRequest": {
+        "type": "object",
+        "required": ["holderId"],
+        "properties": {
+          "holderId": {"type": "string", "format": "uuid"}
+        }
+      },
+      "ChallengeResponse": {
+        "type": "object",
+        "properties": {
+          "challengeId": {"type": "string", "format": "uuid"},
+          "nonce": {"type": "string", "description": "Base64-encoded nonce to sign"},
+          "expiresAt": {"type": "string", "format": "date-time"}
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": ["holderId", "challengeId", "signature"],
+        "properties": {
+          "holderId": {"type": "string", "format": "uuid"},
+          "challengeId": {"type": "string", "format": "uuid"},
+          "signature": {"type": "string", "description": "Base64-encoded signature of the nonce"}
+        }
+      },
+      "LoginResponse": {
+        "type": "object",
+        "properties": {
+          "token": {"type": "string", "description": "JWT token"},
+          "expiresAt": {"type": "string", "format": "date-time"},
+          "holderId": {"type": "string"}
+        }
+      },
+      "CreateDIDRequest": {
+        "type": "object",
+        "properties": {
+          "serviceName": {"type": "string", "maxLength": 100},
+          "serviceEndpoint": {"type": "string", "format": "uri"}
+        }
+      },
+      "DIDResponse": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string", "format": "uuid"},
+          "didIdentifier": {"type": "string", "example": "did:example:abc123"},
+          "createdAt": {"type": "string", "format": "date-time"}
+        }
+      },
+      "DIDDetailResponse": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"},
+          "didIdentifier": {"type": "string"},
+          "document": {"type": "object", "description": "Decrypted DID Document"},
+          "createdAt": {"type": "string", "format": "date-time"},
+          "updatedAt": {"type": "string", "format": "date-time"}
+        }
+      },
+      "CreateVCRequest": {
+        "type": "object",
+        "required": ["type", "issuer", "subjectId"],
+        "properties": {
+          "type": {"type": "string", "example": "ProofOfEmployment"},
+          "issuer": {"type": "string", "example": "did:example:issuer123"},
+          "subjectId": {"type": "string", "example": "did:example:subject456"},
+          "issuedAt": {"type": "string", "format": "date-time"},
+          "expiresAt": {"type": "string", "format": "date-time"},
+          "claims": {
+            "type": "object",
+            "additionalProperties": true,
+            "example": {"employer": "ACME Corp", "position": "Engineer"}
+          }
+        }
+      },
+      "VCMetadata": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string", "format": "uuid"},
+          "type": {"type": "string"},
+          "issuer": {"type": "string"},
+          "subjectId": {"type": "string"},
+          "status": {"type": "string", "enum": ["active", "revoked", "expired"]},
+          "issuedAt": {"type": "string", "format": "date-time"},
+          "expiresAt": {"type": "string", "format": "date-time"},
+          "createdAt": {"type": "string", "format": "date-time"},
+          "updatedAt": {"type": "string", "format": "date-time"}
+        }
+      },
+      "VCDetailResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/VCMetadata"},
+          {
+            "type": "object",
+            "properties": {
+              "credential": {"type": "object", "description": "Decrypted VC payload"}
+            }
+          }
+        ]
+      },
+      "VCListResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {"$ref": "#/components/schemas/VCMetadata"}
+          },
+          "pagination": {
+            "type": "object",
+            "properties": {
+              "page": {"type": "integer"},
+              "limit": {"type": "integer"},
+              "total": {"type": "integer"},
+              "totalPages": {"type": "integer"}
+            }
+          }
+        }
+      },
+      "UpdateVCRequest": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["active", "revoked", "expired"]
+          }
+        }
+      }
+    }
+  }
+}

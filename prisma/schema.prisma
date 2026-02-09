@@ -1,0 +1,99 @@
+// Prisma schema for SSI Personal Data Wallet
+// Using SQLite for easy local setup (no external DB required)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Holder represents a wallet owner (single-holder wallet)
+model Holder {
+  id            String   @id @default(uuid())
+  publicKey     String   @unique // Ed25519 public key (base64)
+  salt          String   // Per-holder salt for key derivation (base64)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  challenges    Challenge[]
+  sessions      Session[]
+  dids          DID[]
+  credentials   VerifiableCredential[]
+
+  @@map("holders")
+}
+
+// Challenge for passwordless auth (nonce-based)
+model Challenge {
+  id        String   @id @default(uuid())
+  holderId  String
+  nonce     String   @unique // Random nonce (base64)
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  holder    Holder   @relation(fields: [holderId], references: [id], onDelete: Cascade)
+
+  @@index([holderId])
+  @@index([expiresAt])
+  @@map("challenges")
+}
+
+// Session for authenticated access
+model Session {
+  id        String   @id @default(uuid())
+  holderId  String
+  token     String   @unique // JWT or opaque token
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  holder    Holder   @relation(fields: [holderId], references: [id], onDelete: Cascade)
+
+  @@index([holderId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// DID Document (encrypted at rest)
+model DID {
+  id              String   @id @default(uuid())
+  holderId        String
+  didIdentifier   String   @unique // did:example:<uuid>
+  documentCipher  String   // AES-256-GCM encrypted DID Document (base64)
+  iv              String   // Initialization vector (base64)
+  authTag         String   // Authentication tag (base64)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  holder          Holder   @relation(fields: [holderId], references: [id], onDelete: Cascade)
+
+  @@index([holderId])
+  @@map("dids")
+}
+
+// Verifiable Credential (encrypted at rest)
+model VerifiableCredential {
+  id              String   @id @default(uuid())
+  holderId        String
+  type            String   // e.g., "ProofOfEmployment"
+  issuer          String   // Issuer DID or identifier
+  subjectId       String   // Subject DID
+  status          String   @default("active") // active, revoked, expired
+  issuedAt        DateTime // When the VC was issued
+  expiresAt       DateTime? // Optional expiration
+  credentialCipher String  // AES-256-GCM encrypted VC payload (base64)
+  iv              String   // Initialization vector (base64)
+  authTag         String   // Authentication tag (base64)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  holder          Holder   @relation(fields: [holderId], references: [id], onDelete: Cascade)
+
+  @@index([holderId])
+  @@index([status])
+  @@map("verifiable_credentials")
+}
